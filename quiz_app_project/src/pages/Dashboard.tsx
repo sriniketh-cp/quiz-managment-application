@@ -1,245 +1,283 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import {
-  LineChart,
-  Line,
-  XAxis as RechartsXAxis,
-  YAxis as RechartsYAxis,
-  CartesianGrid as RechartsCartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  BarChart as RechartsBarChart,
-  Bar as RechartsBar,
-} from "recharts"
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { TrendingUp, Users, Package, Star, Filter, BarChart2, Target } from "lucide-react"
+import type React from "react"
+import { useEffect, useState, useMemo, useCallback } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { PlusCircle, BookOpen, CheckCircle, Search, User, Wand2 } from "lucide-react"
+import { api } from "../lib/api"
+import { useAuth } from "../contexts/AuthContext"
+import debounce from "lodash/debounce"
+import Leaderboard from "../components/Leaderboard"
 
-// Mock Sales Data
-const monthlySalesData = [
-  {
-    month: "Jan",
-    revenue: 45000,
-    customers: 1200,
-    newProducts: 3,
-    profitMargin: 22,
-    customerSatisfaction: 4.5,
-    riskFactor: 0.3,
-    competitorComparison: -5,
-    salesBreakdown: [
-      { category: "Electronics", value: 20000 },
-      { category: "Clothing", value: 15000 },
-      { category: "Accessories", value: 10000 },
-    ],
-  },
-  {
-    month: "Feb",
-    revenue: 52000,
-    customers: 1350,
-    newProducts: 2,
-    profitMargin: 25,
-    customerSatisfaction: 4.7,
-    riskFactor: 0.2,
-    competitorComparison: 3,
-    salesBreakdown: [
-      { category: "Electronics", value: 22000 },
-      { category: "Clothing", value: 18000 },
-      { category: "Accessories", value: 12000 },
-    ],
-  },
-  {
-    month: "Dec",
-    revenue: 75000,
-    customers: 1800,
-    newProducts: 6,
-    profitMargin: 30,
-    customerSatisfaction: 4.9,
-    riskFactor: 0.1,
-    competitorComparison: 8,
-    salesBreakdown: [
-      { category: "Electronics", value: 35000 },
-      { category: "Clothing", value: 25000 },
-      { category: "Accessories", value: 15000 },
-    ],
-  },
-]
+interface Quiz {
+  id: string
+  title: string
+  question_count: number
+  creator_email?: string
+  user_id: string
+  description?: string
+  // Add new properties
+  category?: string
+  tags?: string[]
+  completions?: number
+  averageScore?: number
+  averageTime?: number
+  difficulty?: 'Easy' | 'Medium' | 'Hard'
+}
 
-const SalesDashboard = () => {
-  const [selectedMonth, setSelectedMonth] = useState(null)
-  const [selectedMetric, setSelectedMetric] = useState("revenue")
+interface Stats {
+  totalQuizzes: number
+  totalQuestions: number
+}
 
-  // Innovative Feature: Smart Metric Recommender
-  const recommendMetric = (monthData:any) => {
-    const metrics = [
-      {
-        icon: <TrendingUp className="text-green-500" />,
-        key: "revenue",
-        label: "Revenue Boost",
-        value: monthData.revenue,
-        description: "Highest potential for growth",
-      },
-      {
-        icon: <Users className="text-blue-500" />,
-        key: "customers",
-        label: "Customer Expansion",
-        value: monthData.customers,
-        description: "Key focus for market penetration",
-      },
-      {
-        icon: <Package className="text-purple-500" />,
-        key: "newProducts",
-        label: "Innovation Drive",
-        value: monthData.newProducts,
-        description: "Product diversity indicator",
-      },
-    ]
+export default function Dashboard() {
+  const { session } = useAuth()
+  const navigate = useNavigate()
+  const [stats, setStats] = useState<Stats>({ totalQuizzes: 0, totalQuestions: 0 })
+  const [allQuizzes, setAllQuizzes] = useState<Quiz[]>([])
+  const [userQuizzes, setUserQuizzes] = useState<Quiz[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeTab, setActiveTab] = useState<"all" | "my">("all")
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null)
 
-    return metrics.reduce((max, metric) => (metric.value > max.value ? metric : max))
+  // Add categories
+  const categories = ["Programming", "Mathematics", "Science", "Language", "History"]
+
+  // Modify the filtered quizzes to include category filtering
+  const filteredQuizzes = useMemo(() => {
+    let quizzes = activeTab === "all" ? allQuizzes : userQuizzes
+    const query = searchQuery.toLowerCase().trim()
+    
+    if (query) {
+      quizzes = quizzes.filter((quiz) => quiz.title.toLowerCase().includes(query))
+    }
+    
+    if (selectedCategory !== "all") {
+      quizzes = quizzes.filter((quiz) => quiz.category === selectedCategory)
+    }
+    
+    return quizzes
+  }, [allQuizzes, userQuizzes, searchQuery, activeTab, selectedCategory])
+
+  // Add quiz management functions
+  const handleDeleteQuiz = async (quizId: string) => {
+    try {
+      await api.quizzes.delete(quizId)
+      setAllQuizzes(prev => prev.filter(quiz => quiz.id !== quizId))
+      setUserQuizzes(prev => prev.filter(quiz => quiz.id !== quizId))
+    } catch (error) {
+      console.error("Failed to delete quiz:", error)
+    }
   }
 
-  // Get the currently selected month's data
-  const currentMonthData = useMemo(() => {
-    return selectedMonth
-      ? monthlySalesData.find((item) => item.month === selectedMonth)
-      : monthlySalesData[monthlySalesData.length - 1] // Default to last month
-  }, [selectedMonth])
+  const handleDuplicateQuiz = async (quizId: string) => {
+    try {
+      const duplicatedQuiz = await api.quizzes.duplicate(quizId)
+      setAllQuizzes(prev => [...prev, duplicatedQuiz])
+      setUserQuizzes(prev => [...prev, duplicatedQuiz])
+    } catch (error) {
+      console.error("Failed to duplicate quiz:", error)
+    }
+  }
 
-  // Sales Breakdown Visualization
-  const SalesBreakdownChart = ( data:any ) => {
+  const debouncedSearch = useCallback(
+    debounce((query: string) => {
+      setSearchQuery(query)
+    }, 300),
+    [],
+  )
+
+  const handleSearch = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const query = e.target.value
+      debouncedSearch(query)
+    },
+    [debouncedSearch],
+  )
+
+  const handleQuizClick = useCallback(
+    (quiz: Quiz) => {
+      // Everyone goes to attempt view
+      navigate(`/attempt/${quiz.id}`);
+    },
+    [navigate],
+);
+
+  useEffect(() => {
+    let mounted = true
+
+    async function fetchData() {
+      if (!session?.user?.id) return
+
+      try {
+        setIsLoading(true)
+        const data = await api.quizzes.list()
+
+        if (mounted) {
+          setAllQuizzes(data.allQuizzes)
+          setUserQuizzes(data.userQuizzes)
+          setStats(data.stats)
+        }
+      } catch (error) {
+        console.error("Failed to fetch quizzes:", error)
+        setAllQuizzes([])
+        setUserQuizzes([])
+        setStats({ totalQuizzes: 0, totalQuestions: 0 })
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    fetchData()
+
+    return () => {
+      mounted = false
+    }
+  }, [session])
+
+  if (isLoading) {
     return (
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <BarChart2 className="mr-2 text-indigo-600" />
-            Sales Breakdown
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={250}>
-            <RechartsBarChart data={data.salesBreakdown}>
-              <RechartsCartesianGrid strokeDasharray="3 3" />
-              <RechartsXAxis dataKey="category" />
-              <RechartsYAxis />
-              <RechartsTooltip />
-              <RechartsBar dataKey="value" fill="#8884d8" />
-            </RechartsBarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
     )
   }
 
-  // Performance Insights Component
-  const PerformanceInsights = ({ data }) => {
-    const recommendedMetric = recommendMetric(data)
-
-    return (
-      <Card className="bg-gradient-to-br from-blue-100 to-purple-100 mb-4">
-        <CardContent className="flex items-center p-4">
-          {recommendedMetric.icon}
-          <div className="ml-4">
-            <h3 className="font-bold text-lg">{recommendedMetric.label}</h3>
-            <p className="text-sm text-gray-600">{recommendedMetric.description}</p>
-            <p className="font-semibold">Current Value: {recommendedMetric.value}</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Key Performance Indicators
-  const PerformanceIndicators = ({ data }) => {
-    const indicators = [
-      {
-        icon: <Target className="text-green-500" />,
-        label: "Profit Margin",
-        value: `${data.profitMargin}%`,
-      },
-      {
-        icon: <Star className="text-yellow-500" />,
-        label: "Satisfaction",
-        value: data.customerSatisfaction,
-      },
-      {
-        icon: <Package className="text-blue-500" />,
-        label: "New Products",
-        value: data.newProducts,
-      },
-    ]
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="mr-2 text-indigo-600" />
-            Performance Indicators
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-4">
-          {indicators.map((indicator, index) => (
-            <div key={index} className="text-center p-3 bg-gray-100 rounded-lg">
-              {indicator.icon}
-              <p className="font-semibold mt-2">{indicator.label}</p>
-              <p className="text-xl font-bold">{indicator.value}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    )
-  }
-
+  // Modify the quiz card render to include new features
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">Sales Intelligence Dashboard</h1>
+    <div className="max-w-7xl mx-auto">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <div className="flex space-x-4">
+          <Link
+            to="/quizzes"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            <PlusCircle className="h-5 w-5 mr-2" />
+            Create New Quiz
+          </Link>
+          <Link
+  to="/generate-quiz"
+  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+>
+  <Wand2 className="h-5 w-5 mr-2" />
+  Generate AI Quiz
+</Link>
+        </div>
+      </div>
 
-        {/* Month Selector */}
-        <div className="mb-6 flex justify-center">
-          <Select onValueChange={setSelectedMonth} value={selectedMonth || ""}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select Month" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthlySalesData.map((item) => (
-                <SelectItem key={item.month} value={item.month}>
-                  {item.month}
-                </SelectItem>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 mb-6">
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <BookOpen className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">Total Quizzes</dt>
+                      <dd className="text-3xl font-semibold text-gray-900">{stats.totalQuizzes}</dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt className="text-sm font-medium text-gray-500 truncate">Total Questions</dt>
+                      <dd className="text-3xl font-semibold text-gray-900">{stats.totalQuestions}</dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setActiveTab("all")}
+                  className={`px-4 py-2 rounded-md ${
+                    activeTab === "all" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  All Quizzes
+                </button>
+                <button
+                  onClick={() => setActiveTab("my")}
+                  className={`px-4 py-2 rounded-md ${
+                    activeTab === "my" ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  My Quizzes
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search quizzes..."
+                  onChange={handleSearch}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {filteredQuizzes.map((quiz) => (
+                <div
+                  key={quiz.id}
+                  onClick={() => handleQuizClick(quiz)}
+                  className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-indigo-600 cursor-pointer"
+                >
+                  <div className="flex-shrink-0">
+                    <BookOpen className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{quiz.title}</p>
+                        <p className="text-sm text-gray-500">{quiz.question_count || 0} questions</p>
+                      </div>
+                      {quiz.creator_email && activeTab === "all" && (
+                        <div className="flex items-center text-sm text-gray-500">
+                          <User className="h-4 w-4 mr-1" />
+                          {quiz.creator_email}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          </div>
         </div>
 
-        {/* Recommended Metric Insight */}
-        <PerformanceInsights data={currentMonthData} />
-
-        {/* Performance Indicators */}
-        <PerformanceIndicators data={currentMonthData} />
-
-        {/* Sales Breakdown */}
-        <SalesBreakdownChart data={currentMonthData} />
-
-        {/* Main Sales Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{currentMonthData.month} Sales Metrics</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={[currentMonthData]}>
-                <RechartsCartesianGrid strokeDasharray="3 3" />
-                <RechartsXAxis dataKey="month" />
-                <RechartsYAxis />
-                <RechartsTooltip />
-                <Line type="monotone" dataKey={selectedMetric} stroke="#8884d8" activeDot={{ r: 8 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <div>
+          <Leaderboard />
+        </div>
       </div>
     </div>
   )
 }
-
-export default SalesDashboard
 
