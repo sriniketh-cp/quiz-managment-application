@@ -50,8 +50,8 @@ npm run dev
 
 🖼️ Screenshots
 Login
-![Login](Login.png)
+Login.png
 Dashborad
-![Dashborad](Dashborad.png)
+Dashborad.png
 Quiz Generator
-![Generated Quizzes](My quizzes.png)
+My quizzes.png
