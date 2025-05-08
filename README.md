@@ -49,10 +49,9 @@ cp .env.example .env
 npm run dev
 
 🖼️ Screenshots
-Place your screenshots in assets/screenshots/ and reference them below:
-
-Login Page
-
-Dashboard
-
+Login
+![Login](Login.png)
+Dashborad
+![Dashborad](Dashborad.png)
 Quiz Generator
+![Generated Quizzes](My quizzes.png)
