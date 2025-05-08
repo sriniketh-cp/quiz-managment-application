@@ -48,10 +48,14 @@ cp .env.example .env
 # Run the full-stack application
 npm run dev
 
-🖼️ Screenshots
-Login
-Login.png
-Dashborad
-Dashborad.png
-Quiz Generator
-My quizzes.png
+## 🖼️ Screenshots
+
+### 🔐 Login Page  
+![Login](./Login.png)
+
+### 📊 Dashboard  
+![Dashboard](./Dashborad.png)
+
+### 🧠 Quiz Generator  
+![Quiz Generator](./My-quizzes.png)
+
