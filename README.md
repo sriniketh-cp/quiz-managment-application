@@ -50,12 +50,7 @@ npm run dev
 
 ## 🖼️ Screenshots
 
-### 🔐 Login Page  
 ![Login](./Login.png)
-
-### 📊 Dashboard  
 ![Dashboard](./Dashborad.png)
-
-### 🧠 Quiz Generator  
 ![Quiz Generator](./My-quizzes.png)
 
